@@ -69,11 +69,16 @@ for u, v, link_type in edges:
                    latency=random.randint(10, 50),
                    packet_loss_prob=random.uniform(0.01, 0.1))
 
-
-# ------------------ Quantum Repeater Simulation ------------------ #
+# ------------------ Enhanced Quantum Simulation with Rerouting ------------------ #
 
 REPEATER_DISTANCE_THRESHOLD = 70
 REPEATER_EFFECTIVENESS = 0.5
+
+QEC_THRESHOLD = 0.2
+QEC_EFFECTIVENESS = 0.3
+
+BOTTLENECK_TRAFFIC_THRESHOLD = 100
+BOTTLENECK_WEIGHT = 1e6  # Effectively blocks high-traffic links in shortest_path
 
 def baseline_quantum_success(G):
     successful = 0
@@ -88,32 +93,95 @@ def baseline_quantum_success(G):
     print(f"Baseline Success Rate: {success_rate:.2f}% ({successful}/{total})")
     return success_rate
 
-def simulate_with_repeaters(G):
+
+def simulate_with_enhancements(G):
     successful_links = 0
     total_links = 0
-    print("\n📊 Quantum Link Simulation With Repeaters:")
+    print("\n📊 Quantum Link Simulation With Repeaters + QEC + Bottleneck Detection + Rerouting:")
+
     for u, v in G.edges():
-        if G[u][v]['type'] != 'quantum':
-            continue
         edge = G[u][v]
+
+        if edge['type'] != 'quantum':
+            continue
+
         total_links += 1
-        if edge['distance'] > REPEATER_DISTANCE_THRESHOLD:
-            orig_deco = edge['decoherence_rate']
-            orig_swap = edge['ent_swap_fail_prob']
-            edge['decoherence_rate'] *= REPEATER_EFFECTIVENESS
-            edge['ent_swap_fail_prob'] *= REPEATER_EFFECTIVENESS
-            success = simulate_quantum_link(u, v, G)
-            edge['decoherence_rate'] = orig_deco
-            edge['ent_swap_fail_prob'] = orig_swap
-        else:
-            success = simulate_quantum_link(u, v, G)
+
+        rerouted = False
+        use_reroute = False
+
+        # 🚨 Detect Bottleneck
+        if 'traffic' in edge and edge['traffic'] > BOTTLENECK_TRAFFIC_THRESHOLD:
+            print(f"🚨 Bottleneck detected on link {u}-{v} with traffic {edge['traffic']}")
+            use_reroute = True
+
+        # 🔁 Try rerouting
+        if use_reroute:
+            try:
+                path = nx.shortest_path(
+                    G,
+                    source=u,
+                    target=v,
+                    weight=lambda a, b, e: BOTTLENECK_WEIGHT if e.get('traffic', 0) > BOTTLENECK_TRAFFIC_THRESHOLD else 1,
+                )
+
+                if len(path) > 2:
+                    print(f"🔁 Rerouting around bottleneck: {' -> '.join(path)}")
+
+                    rerouted = True
+                    reroute_success = True
+                    for i in range(len(path) - 1):
+                        x, y = path[i], path[i + 1]
+                        if G[x][y]['type'] != 'quantum':
+                            continue
+                        success = simulate_quantum_edge_with_enhancements(G, x, y)
+                        if not success:
+                            reroute_success = False
+                            break
+
+                    if reroute_success:
+                        successful_links += 1
+                        continue
+
+            except nx.NetworkXNoPath:
+                print(f"⚠️ No reroute path found between {u} and {v}, simulating original link.")
+
+        # If not rerouted or failed, simulate original link
+        success = simulate_quantum_edge_with_enhancements(G, u, v)
         if success:
             successful_links += 1
+
     success_rate = successful_links / total_links * 100 if total_links > 0 else 0
-    print(f"Success Rate With Repeaters: {success_rate:.2f}% ({successful_links}/{total_links})")
+    print(f"Success Rate With Enhancements: {success_rate:.2f}% ({successful_links}/{total_links})")
     return success_rate
 
-# ------------------ Bar Chart ------------------ #
+
+def simulate_quantum_edge_with_enhancements(G, u, v):
+    edge = G[u][v]
+
+    # Backup
+    orig_deco = edge['decoherence_rate']
+    orig_swap = edge['ent_swap_fail_prob']
+
+    # Apply repeater
+    if edge['distance'] > REPEATER_DISTANCE_THRESHOLD:
+        edge['decoherence_rate'] *= REPEATER_EFFECTIVENESS
+        edge['ent_swap_fail_prob'] *= REPEATER_EFFECTIVENESS
+
+    # Apply QEC if needed
+    if edge['decoherence_rate'] > QEC_THRESHOLD or edge['ent_swap_fail_prob'] > QEC_THRESHOLD:
+        edge['decoherence_rate'] *= QEC_EFFECTIVENESS
+        edge['ent_swap_fail_prob'] *= QEC_EFFECTIVENESS
+
+    # Simulate
+    success = simulate_quantum_link(u, v, G)
+
+    # Restore
+    edge['decoherence_rate'] = orig_deco
+    edge['ent_swap_fail_prob'] = orig_swap
+
+    return success
+
 
 def plot_comparison_chart(baseline, improved):
     scenarios = ['Baseline', 'With Repeaters']
@@ -276,7 +344,7 @@ print(f"Final path: {path2}")
 
 print("\n=== Quantum Repeater Simulation ===")
 baseline_rate = baseline_quantum_success(G)
-improved_rate = simulate_with_repeaters(G)
+improved_rate = simulate_with_enhancements(G)
 print(f"\n🎯 Improvement: {improved_rate - baseline_rate:.2f}%")
 visualize_network(G)
 plot_comparison_chart(baseline_rate, improved_rate)
