@@ -1,205 +1,180 @@
 import networkx as nx
 import matplotlib.pyplot as plt
 import random
+import copy
 
-random.seed(42)  # For consistent results
+random.seed(42)
 
-# Define node types
+# ----------------- Node and Edge Setup -----------------
 node_types = {
     'classical': ['A', 'B', 'C', 'D', 'E'],
-    'quantum': ['F', 'G', 'H', 'I', 'J']
+    'quantum':   ['F', 'G', 'H', 'I', 'J']
 }
 
 G = nx.Graph()
 
-# Add nodes
 for node in node_types['classical']:
     G.add_node(node, type='classical', entanglement_storage=False)
-
 for node in node_types['quantum']:
     G.add_node(node, type='quantum', entanglement_storage=True)
 
-# Define edge list with physically valid links
 edges = [
-    ('A', 'B', 'classical'), 
-    ('B', 'C', 'classical'),
-    ('C', 'D', 'classical'),
-    ('D', 'E', 'classical'),
-    ('F', 'G', 'quantum'),
-    ('F', 'H', 'quantum'),
-    ('G', 'H', 'quantum'),
-    ('H', 'I', 'quantum'),
-    ('I', 'J', 'quantum'),
-    ('J', 'D', 'quantum'),
-    ('B', 'I', 'quantum'),
-    ('C', 'H', 'quantum'),
-    ('E', 'J', 'quantum'),
-    ('A', 'F', 'classical'),
-    ('E', 'G', 'classical'),
-    ('J', 'D', 'classical'),
-    ('B', 'I', 'classical'),
-    ('C', 'H', 'classical'),
-    ('E', 'J', 'classical')
+    ('A', 'B', 'classical'), ('B', 'C', 'classical'), ('C', 'D', 'classical'), ('D', 'E', 'classical'),
+    ('F', 'G', 'quantum'), ('F', 'H', 'quantum'), ('G', 'H', 'quantum'), ('H', 'I', 'quantum'), ('I', 'J', 'quantum'),
+    ('J', 'D', 'quantum'), ('B', 'I', 'quantum'), ('C', 'H', 'quantum'), ('E', 'J', 'quantum'),
+    ('A', 'F', 'classical'), ('E', 'G', 'classical'), ('J', 'D', 'classical'), ('B', 'I', 'classical'),
+    ('C', 'H', 'classical'), ('E', 'J', 'classical')
 ]
 
-# Add edges with proper attributes
-for u, v, link_type in edges:
-    if link_type == 'quantum':
-        if G.nodes[u]['type'] == 'quantum' and G.nodes[v]['type'] == 'quantum':
-            G.add_edge(u, v,
-                       type='quantum',
-                       distance=random.randint(10, 100),
-                       decoherence_rate=0.01,
-                       ent_swap_fail_prob=random.uniform(0.05, 0.2),
-                       environment_noise=random.uniform(0.1, 0.4),
-                       fiber_quality_factor=random.uniform(0.7, 1.0),
-                       temperature_factor=random.uniform(0.5, 1.5))
-        else:
-            G.add_edge(u, v,
-                       type='classical',
-                       latency=random.randint(10, 50),
-                       packet_loss_prob=random.uniform(0.01, 0.1))
-    else:
-        G.add_edge(u, v,
-                   type='classical',
-                   latency=random.randint(10, 50),
-                   packet_loss_prob=random.uniform(0.01, 0.1))
+def get_channel_factor(channel_type):
+    return {'amplitude': 1.0, 'phase': 0.7, 'depolarizing': 1.2}.get(channel_type, 1.0)
 
-# ------------------ Simulation Functions ------------------ #
-
-def simulate_quantum_link(u, v, G):
-    edge = G[u][v]
-    if edge['type'] != 'quantum':
-        return None
-
-    decoherence_prob = (
-        edge['distance'] * edge['decoherence_rate'] *
-        edge['environment_noise'] *
-        (1 - edge['fiber_quality_factor']) *
-        edge['temperature_factor']
+def compute_decoherence_rate(base, temp, env_noise, quality, typ):
+    return max(
+        base * (1 + 0.01 * temp) * (1 + 0.5 * env_noise) * get_channel_factor(typ) * (1 - 0.5 * quality), 0
     )
 
-    ent_swap_fail = edge['ent_swap_fail_prob']
-    failed_decoherence = random.random() < decoherence_prob
-    failed_ent_swap = random.random() < ent_swap_fail
-    success = not (failed_decoherence or failed_ent_swap)
+for u, v, kind in edges:
+    if kind == 'quantum' and G.nodes[u]['type'] == 'quantum' and G.nodes[v]['type'] == 'quantum':
+        base = 0.01
+        temp = random.uniform(0.01, 4)
+        noise = random.uniform(0, 1)
+        quality = random.uniform(0.7, 0.99)
+        typ = random.choice(['amplitude', 'phase', 'depolarizing'])
+        deco = compute_decoherence_rate(base, temp, noise, quality, typ)
+        G.add_edge(u, v,
+            type='quantum', can_store_entanglement=True,
+            distance=random.randint(10, 100),
+            temperature=temp, env_noise=noise, qubit_quality=quality,
+            channel_type=typ, decoherence_rate=deco,
+            ent_swap_fail_prob=random.uniform(0.05, 0.2),
+            memory_qubits=random.randint(4, 10)
+        )
+    else:
+        G.add_edge(u, v,
+            type='classical', can_store_entanglement=False,
+            latency=random.randint(10, 50),
+            packet_loss_prob=random.uniform(0.01, 0.1))
 
-    print(f"Quantum link {u}-{v}: distance={edge['distance']} km, "
-          f"decoherence_prob={decoherence_prob:.3f}, "
-          f"ent_swap_fail_prob={ent_swap_fail:.2f}, success={success}")
-    print(f"   [EnvNoise={edge['environment_noise']:.2f}, FiberQual={edge['fiber_quality_factor']:.2f}, "
-          f"Temp={edge['temperature_factor']:.2f}]")
-    return success
+# ----------------- Simulators -----------------
+def simulate_entanglement_swap(u, v, G):
+    edge = G[u][v]
+    if edge['type'] != 'quantum': return None
+    decoherence_prob = edge['distance'] * edge['decoherence_rate']
+    swap_fail_prob = edge['ent_swap_fail_prob']
+    fail = random.random() < decoherence_prob or random.random() < swap_fail_prob
+    print(f"  Entanglement swap {u}-{v} | deco={decoherence_prob:.2g}, swap_fail={swap_fail_prob:.2g} >>> {'FAIL' if fail else 'SUCCESS'}")
+    return not fail
 
 def simulate_classical_link(u, v, G):
     edge = G[u][v]
-    if edge['type'] != 'classical':
-        return None
+    if edge['type'] != 'classical': return None
+    fail = random.random() < edge['packet_loss_prob']
+    print(f"  Classical {u}-{v} | latency={edge['latency']}, loss={edge['packet_loss_prob']:.2g} >>> {'FAIL' if fail else 'SUCCESS'}")
+    return not fail
 
-    latency = edge['latency']
-    packet_loss_prob = edge['packet_loss_prob']
-    lost = random.random() < packet_loss_prob
-    success = not lost
+def simulate_quantum_link(u, v, G):
+    return simulate_entanglement_swap(u, v, G)
 
-    print(f"Classical link {u}-{v}: latency={latency}ms, "
-          f"packet_loss_prob={packet_loss_prob:.2f}, success={success}")
-    return success, latency
+def simulate_quantum_edge_with_enhancements(G, u, v):
+    edge = G[u][v]
+    orig_deco = edge['decoherence_rate']
+    orig_swap = edge['ent_swap_fail_prob']
+    if edge['distance'] > 70:
+        edge['decoherence_rate'] *= 0.5
+        edge['ent_swap_fail_prob'] *= 0.5
+    if edge['decoherence_rate'] > 0.2 or edge['ent_swap_fail_prob'] > 0.2:
+        edge['decoherence_rate'] *= 0.3
+        edge['ent_swap_fail_prob'] *= 0.3
+    result = simulate_entanglement_swap(u, v, G)
+    edge['decoherence_rate'] = orig_deco
+    edge['ent_swap_fail_prob'] = orig_swap
+    return result
 
-# ------------------ Visualization ------------------ #
+# ----------------- Analysis -----------------
+def baseline_quantum_success(G):
+    total, success = 0, 0
+    print("\n📊 Baseline Quantum Simulation:")
+    for u, v in G.edges():
+        if G[u][v]['type'] == 'quantum':
+            total += 1
+            if simulate_entanglement_swap(u, v, G): success += 1
+    print(f"Baseline Success: {success}/{total} = {100*success/total:.2f}%")
+    return 100 * success / total if total else 0
 
-def visualize_network(G):
-    pos = nx.spring_layout(G, seed=42)
+def simulate_with_enhancements(G):
+    total, success = 0, 0
+    print("\n📊 Enhanced Quantum Simulation:")
+    for u, v in G.edges():
+        if G[u][v]['type'] == 'quantum':
+            total += 1
+            if simulate_quantum_edge_with_enhancements(G, u, v): success += 1
+    print(f"Enhanced Success: {success}/{total} = {100*success/total:.2f}%")
+    return 100 * success / total if total else 0
 
-    quantum_nodes = [n for n, d in G.nodes(data=True) if d['type'] == 'quantum']
-    classical_nodes = [n for n, d in G.nodes(data=True) if d['type'] == 'classical']
-    quantum_edges = [(u, v) for u, v, d in G.edges(data=True) if d['type'] == 'quantum']
-    classical_edges = [(u, v) for u, v, d in G.edges(data=True) if d['type'] == 'classical']
-
-    nx.draw_networkx_nodes(G, pos, nodelist=quantum_nodes, node_color='skyblue', node_size=700, label='Quantum Node')
-    nx.draw_networkx_nodes(G, pos, nodelist=classical_nodes, node_color='orange', node_size=700, label='Classical Node')
-    nx.draw_networkx_edges(G, pos, edgelist=quantum_edges, edge_color='green', width=2, label='Quantum Link')
-    nx.draw_networkx_edges(G, pos, edgelist=classical_edges, edge_color='red', width=2, style='dashed', label='Classical Link')
-    nx.draw_networkx_labels(G, pos, font_size=12, font_weight='bold')
-
-    plt.title("Enhanced Hybrid Quantum-Classical Network (No Interference)")
-    plt.axis('off')
-    plt.legend()
+def plot_comparison_chart(baseline, improved):
+    plt.figure(figsize=(8, 5))
+    bars = plt.bar(['Baseline', 'With Enhancements'], [baseline, improved], color=['red', 'green'])
+    plt.ylim(0, 100)
+    plt.ylabel("Success Rate (%)")
+    for bar in bars:
+        y = bar.get_height()
+        plt.text(bar.get_x() + bar.get_width()/2, y + 1, f"{y:.2f}%", ha='center')
+    plt.title("Quantum Link Success Comparison")
+    plt.grid(True)
+    plt.tight_layout()
     plt.show()
 
-# ------------------ Hybrid Routing Protocol ------------------ #
+# ----------------- Visualization -----------------
+def visualize_network(G):
+    pos = nx.spring_layout(G, seed=42)
+    q_nodes = [n for n, d in G.nodes(data=True) if d['type'] == 'quantum']
+    c_nodes = [n for n, d in G.nodes(data=True) if d['type'] == 'classical']
+    q_edges = [(u, v) for u, v, d in G.edges(data=True) if d['type'] == 'quantum']
+    c_edges = [(u, v) for u, v, d in G.edges(data=True) if d['type'] == 'classical']
+    nx.draw_networkx_nodes(G, pos, nodelist=q_nodes, node_color='skyblue', node_size=700)
+    nx.draw_networkx_nodes(G, pos, nodelist=c_nodes, node_color='orange', node_size=700)
+    nx.draw_networkx_edges(G, pos, edgelist=q_edges, edge_color='green', width=2)
+    nx.draw_networkx_edges(G, pos, edgelist=c_edges, edge_color='red', width=2, style='dashed')
+    nx.draw_networkx_labels(G, pos, font_size=12, font_weight='bold')
+    plt.title("Hybrid Quantum-Classical Network")
+    plt.axis('off')
+    plt.show()
 
-def hybrid_route(source, target, G):
-    print(f"\n🚦 Hybrid Routing: Trying to send from {source} to {target}")
+# ----------------- No-Cloning -----------------
+def attempt_quantum_cloning(source, destinations, G):
+    if len(destinations) > 1:
+        print(f"\n❌ No-Cloning Violation: {source} → {destinations}")
+        return False
+    dest = destinations[0]
+    if G.has_edge(source, dest) and G[source][dest]['type'] == 'quantum':
+        print(f"\n✅ Quantum Transmission Allowed: {source} → {dest}")
+        return simulate_quantum_link(source, dest, G)
+    print(f"\n⚠️ Invalid: No quantum link from {source} to {dest}")
+    return False
 
-    def path_success(path):
-        for u, v in zip(path, path[1:]):
-            edge = G[u][v]
-            if edge['type'] == 'quantum':
-                if not simulate_quantum_link(u, v, G):
-                    print(f"❌ Quantum link failed: {u} -> {v}")
-                    return False, (u, v)
-            else:
-                success, _ = simulate_classical_link(u, v, G)
-                if not success:
-                    print(f"❌ Classical link failed: {u} -> {v}")
-                    return False, (u, v)
-        return True, None
+# ----------------- Main Execution -----------------
+if __name__ == "__main__":
+    print("\n📡 Quantum Links:")
+    for u, v in G.edges():
+        if G[u][v]['type'] == 'quantum':
+            simulate_entanglement_swap(u, v, G)
 
-    # Try quantum-only path
-    if G.nodes[source]['type'] == 'quantum' and G.nodes[target]['type'] == 'quantum':
-        try:
-            q_path = nx.shortest_path(G, source=source, target=target)
-            if all(G[u][v]['type'] == 'quantum' for u, v in zip(q_path, q_path[1:])):
-                print(f"🔬 Trying quantum-only path: {' -> '.join(q_path)}")
-                success, failed_link = path_success(q_path)
-                if success:
-                    print("✅ Message sent successfully over quantum path.")
-                    return q_path
-        except Exception:
-            pass
+    print("\n📡 Classical Links:")
+    for u, v in G.edges():
+        if G[u][v]['type'] == 'classical':
+            simulate_classical_link(u, v, G)
 
-    # Fallback hybrid path
-    temp_graph = G.copy()
-    attempts = 0
-    max_attempts = 5
-    while attempts < max_attempts:
-        try:
-            path = nx.shortest_path(temp_graph, source=source, target=target)
-            print(f"🔁 Attempting hybrid path: {' -> '.join(path)}")
-            success, failed_link = path_success(path)
-            if success:
-                print("✅ Message sent successfully over hybrid path.")
-                return path
-            else:
-                temp_graph.remove_edge(*failed_link)
-                print(f"🔁 Retrying without failed link: {failed_link}")
-                attempts += 1
-        except nx.NetworkXNoPath:
-            print("❌ No more alternate paths available.")
-            break
+    print("\n🛰️ Visualizing Network:")
+    visualize_network(G)
 
-    print("❌ Message delivery failed after multiple attempts.")
-    return None
+    print("\n=== Quantum Repeater Simulation ===")
+    baseline = baseline_quantum_success(G)
+    improved = simulate_with_enhancements(G)
+    print(f"\n🎯 Improvement: {improved - baseline:.2f}%")
+    plot_comparison_chart(baseline, improved)
 
-# ------------------ Run Simulations ------------------ #
-
-print("\n📡 Simulating Quantum Links:")
-for u, v in G.edges():
-    if G[u][v]['type'] == 'quantum':
-        simulate_quantum_link(u, v, G)
-
-print("\n📡 Simulating Classical Links:")
-for u, v in G.edges():
-    if G[u][v]['type'] == 'classical':
-        simulate_classical_link(u, v, G)
-
-print("\n🛰️ Visualizing Network Topology:")
-visualize_network(G)
-
-print("\n🚀 Testing Hybrid Routing from A to J:")
-path1 = hybrid_route('A', 'J', G)
-print(f"Final path: {path1}")
-
-print("\n🚀 Testing Hybrid Routing from F to J:")
-path2 = hybrid_route('F', 'J', G)
-print(f"Final path: {path2}")
+    print("\n--- Simulating No-Cloning ---")
+    attempt_quantum_cloning('F', ['G'], G)
+    attempt_quantum_cloning('F', ['G', 'H'], G)
+    attempt_quantum_cloning('A', ['B'], G)
