@@ -1,0 +1,109 @@
+START
+ |
+ |-- Input: Source Node, Target Node, Network Graph
+ |
+ |--[Check] Are both source and target quantum nodes?
+ |     |
+ |     |-- YES:
+ |     |    |--[Try] Find shortest quantum-only path
+ |     |    |--[Simulate] Each quantum link in path
+ |     |    |--[Check] All quantum links support entanglement?
+ |     |         |
+ |     |         |-- YES → ✅ Deliver message over quantum entangled path → END
+ |     |         |-- NO  → ❌ Proceed to fallback hybrid routing
+ |     |
+ |     |-- NO:
+ |          |
+ |          |--[Check] Are both source and target classical nodes?
+ |               |
+ |               |-- YES:
+ |               |    |--[Try] Find shortest classical-only path
+ |               |    |--[Simulate] Each classical link in path
+ |               |    |--[Check] All classical links succeed?
+ |               |         |
+ |               |         |-- YES → ✅ Deliver message over classical path → END
+ |               |         |-- NO  → ❌ Proceed to fallback hybrid routing
+ |               |
+ |               |-- NO (Quantum ↔ Classical or failure):
+ |                     |
+ |                     |-- ❗ Quantum ↔ Classical → Entanglement not possible
+ |                     ↓
+ |      🔁 Begin fallback hybrid routing
+ |      ┌─────────────────────────────┐
+ |      │ Initialize: temp_graph = G  │
+ |      │ attempts = 0                │
+ |      │ max_attempts = 5            │
+ |      └─────────────────────────────┘
+ |         |
+ |         |--[Loop] While attempts < max_attempts:
+ |         |     |
+ |         |     |--[Find] Shortest hybrid path in temp_graph
+ |         |     |--[Simulate] Each link in path:
+ |         |     |     - Quantum link? → Check reliability (no entanglement to classical)
+ |         |     |     - Classical link? → Use as-is
+ |         |     |
+ |         |     |--[Check] All links succeed?
+ |         |         |
+ |         |         |-- YES → ✅ Deliver message over hybrid path → END
+ |         |         |-- NO  → ❌ Remove failed link from temp_graph
+ |         |                    attempts += 1
+ |         |
+ |         |--[Check] If no more path → ❌ Message delivery failed
+ |
+END
+
+
+
+🔷 What is temp_graph = G in the flowchart?
+In the context of the fallback hybrid routing, the line:
+
+makefile
+Copy
+Edit
+Initialize: temp_graph = G
+means:
+
+✅ Create a temporary working copy of the full network graph G, which includes:
+
+All nodes (quantum + classical)
+
+All available links (quantum, classical, and hybrid-compatible)
+
+This temporary graph will be used and modified during fallback routing to try alternative paths without changing the original network graph G.
+
+🧠 Why is a temporary graph used?
+Because:
+
+If a path fails (due to a broken or unreliable link), that link is removed from temp_graph to try a new route.
+
+But you don’t want to delete edges from the real network graph G, since those might still be valid for future routing attempts.
+
+✅ Example:
+Let’s say you have this original graph G:
+
+mathematica
+Copy
+Edit
+Nodes: A, B, C, D
+Links:
+- A—B (quantum)
+- B—C (classical)
+- C—D (quantum)
+- A—D (hybrid)
+During hybrid routing:
+
+You set temp_graph = copy of G
+
+Try shortest path A → B → C → D
+
+If B—C fails, you remove B—C from temp_graph only, not from the original G
+
+| Step                      | Purpose                                                               |
+| ------------------------- | --------------------------------------------------------------------- |
+| `temp_graph = G`          | Allows safe link removal during retries                               |
+| `attempts = 0`, `max = 5` | Prevents infinite retries                                             |
+| Find hybrid path          | Combines quantum + classical links                                    |
+| Simulate links            | Validates link type, quantum reliability, and quantum-classical rules |
+| On failure                | Remove bad link and retry another path                                |
+| Success condition         | All links succeed → deliver message                                   |
+| Failure condition         | Max attempts or no path → fail                                        |
