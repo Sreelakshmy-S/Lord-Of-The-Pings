@@ -64,7 +64,20 @@ for u, v, link_type in edges:
                    type='classical',
                    latency=random.randint(10, 50),
                    packet_loss_prob=random.uniform(0.01, 0.1))
+print("📌 Node Properties:")
+for node in G.nodes(data=True):
+    name, attributes = node
+    print(f"Node {name}:")
+    for key, value in attributes.items():
+        print(f"  {key}: {value}")
+    print()
 
+print("📌 Edge Properties:")
+for u, v, attributes in G.edges(data=True):
+    print(f"Edge {u} - {v}:")
+    for key, value in attributes.items():
+        print(f"  {key}: {value}")
+    print()
 # ------------------ Simulation Functions ------------------ #
 
 def simulate_quantum_link(u, v, G):
@@ -180,6 +193,9 @@ def hybrid_route(source, target, G):
 
     print("❌ Message delivery failed after multiple attempts.")
     return None
+
+
+
 
 # ------------------ Run Simulations ------------------ #
 
