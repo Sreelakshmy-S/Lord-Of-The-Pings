@@ -69,6 +69,67 @@ for u, v, link_type in edges:
                    latency=random.randint(10, 50),
                    packet_loss_prob=random.uniform(0.01, 0.1))
 
+
+# ------------------ Quantum Repeater Simulation ------------------ #
+
+REPEATER_DISTANCE_THRESHOLD = 70
+REPEATER_EFFECTIVENESS = 0.5
+
+def baseline_quantum_success(G):
+    successful = 0
+    total = 0
+    print("\n📊 Baseline Quantum Link Simulation (No Repeaters):")
+    for u, v in G.edges():
+        if G[u][v]['type'] == 'quantum':
+            total += 1
+            if simulate_quantum_link(u, v, G):
+                successful += 1
+    success_rate = successful / total * 100 if total > 0 else 0
+    print(f"Baseline Success Rate: {success_rate:.2f}% ({successful}/{total})")
+    return success_rate
+
+def simulate_with_repeaters(G):
+    successful_links = 0
+    total_links = 0
+    print("\n📊 Quantum Link Simulation With Repeaters:")
+    for u, v in G.edges():
+        if G[u][v]['type'] != 'quantum':
+            continue
+        edge = G[u][v]
+        total_links += 1
+        if edge['distance'] > REPEATER_DISTANCE_THRESHOLD:
+            orig_deco = edge['decoherence_rate']
+            orig_swap = edge['ent_swap_fail_prob']
+            edge['decoherence_rate'] *= REPEATER_EFFECTIVENESS
+            edge['ent_swap_fail_prob'] *= REPEATER_EFFECTIVENESS
+            success = simulate_quantum_link(u, v, G)
+            edge['decoherence_rate'] = orig_deco
+            edge['ent_swap_fail_prob'] = orig_swap
+        else:
+            success = simulate_quantum_link(u, v, G)
+        if success:
+            successful_links += 1
+    success_rate = successful_links / total_links * 100 if total_links > 0 else 0
+    print(f"Success Rate With Repeaters: {success_rate:.2f}% ({successful_links}/{total_links})")
+    return success_rate
+
+# ------------------ Bar Chart ------------------ #
+
+def plot_comparison_chart(baseline, improved):
+    scenarios = ['Baseline', 'With Repeaters']
+    success_rates = [baseline, improved]
+    colors = ['red', 'green']
+    plt.figure(figsize=(8, 5))
+    bars = plt.bar(scenarios, success_rates, color=colors)
+    plt.title("Quantum Link Success Rate Comparison")
+    plt.ylabel("Success Rate (%)")
+    plt.ylim(0, 100)
+    for bar in bars:
+        yval = bar.get_height()
+        plt.text(bar.get_x() + bar.get_width()/2, yval + 2, f'{yval:.2f}%', ha='center', fontsize=10)
+    plt.tight_layout()
+    plt.show()
+
 # ------------------ Simulation Functions ------------------ #
 
 def simulate_quantum_link(u, v, G):
@@ -202,6 +263,9 @@ def hybrid_route(source, target, G):
 
     print("❌ Message delivery failed after multiple attempts.")
     return None
+
+
+
 print("\n🚀 Testing Hybrid Routing from A to J:")
 path1 = hybrid_route('A', 'J', G)
 print(f"Final path: {path1}")
@@ -210,3 +274,9 @@ print("\n🚀 Testing Hybrid Routing from F to J:")
 path2 = hybrid_route('F', 'J', G)
 print(f"Final path: {path2}")
 
+print("\n=== Quantum Repeater Simulation ===")
+baseline_rate = baseline_quantum_success(G)
+improved_rate = simulate_with_repeaters(G)
+print(f"\n🎯 Improvement: {improved_rate - baseline_rate:.2f}%")
+visualize_network(G)
+plot_comparison_chart(baseline_rate, improved_rate)
