@@ -1,0 +1,53 @@
+START
+ |
+ |-- Input: Source Node, Target Node, Network Graph
+ |
+ |--[Check] Are both source and target quantum nodes?
+ |     |
+ |     |-- YES:
+ |     |    |--[Try] Find shortest quantum-only path
+ |     |    |--[Simulate] Each quantum link in path
+ |     |    |--[Check] All quantum links support entanglement?
+ |     |         |
+ |     |         |-- YES → ✅ Deliver message over quantum entangled path → END
+ |     |         |-- NO  → ❌ Proceed to fallback hybrid routing
+ |     |
+ |     |-- NO:
+ |          |
+ |          |--[Check] Are both source and target classical nodes?
+ |               |
+ |               |-- YES:
+ |               |    |--[Try] Find shortest classical-only path
+ |               |    |--[Simulate] Each classical link in path
+ |               |    |--[Check] All classical links succeed?
+ |               |         |
+ |               |         |-- YES → ✅ Deliver message over classical path → END
+ |               |         |-- NO  → ❌ Proceed to fallback hybrid routing
+ |               |
+ |               |-- NO (Quantum ↔ Classical or failure):
+ |                     |
+ |                     |-- ❗ Quantum ↔ Classical → Entanglement not possible
+ |                     ↓
+ |      🔁 Begin fallback hybrid routing
+ |      ┌─────────────────────────────┐
+ |      │ Initialize: temp_graph = G  │
+ |      │ attempts = 0                │
+ |      │ max_attempts = 5            │
+ |      └─────────────────────────────┘
+ |         |
+ |         |--[Loop] While attempts < max_attempts:
+ |         |     |
+ |         |     |--[Find] Shortest hybrid path in temp_graph
+ |         |     |--[Simulate] Each link in path:
+ |         |     |     - Quantum link? → Check reliability (no entanglement to classical)
+ |         |     |     - Classical link? → Use as-is
+ |         |     |
+ |         |     |--[Check] All links succeed?
+ |         |         |
+ |         |         |-- YES → ✅ Deliver message over hybrid path → END
+ |         |         |-- NO  → ❌ Remove failed link from temp_graph
+ |         |                    attempts += 1
+ |         |
+ |         |--[Check] If no more path → ❌ Message delivery failed
+ |
+END
