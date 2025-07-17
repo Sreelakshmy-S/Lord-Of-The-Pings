@@ -51,3 +51,59 @@ START
  |         |--[Check] If no more path → ❌ Message delivery failed
  |
 END
+
+
+
+🔷 What is temp_graph = G in the flowchart?
+In the context of the fallback hybrid routing, the line:
+
+makefile
+Copy
+Edit
+Initialize: temp_graph = G
+means:
+
+✅ Create a temporary working copy of the full network graph G, which includes:
+
+All nodes (quantum + classical)
+
+All available links (quantum, classical, and hybrid-compatible)
+
+This temporary graph will be used and modified during fallback routing to try alternative paths without changing the original network graph G.
+
+🧠 Why is a temporary graph used?
+Because:
+
+If a path fails (due to a broken or unreliable link), that link is removed from temp_graph to try a new route.
+
+But you don’t want to delete edges from the real network graph G, since those might still be valid for future routing attempts.
+
+✅ Example:
+Let’s say you have this original graph G:
+
+mathematica
+Copy
+Edit
+Nodes: A, B, C, D
+Links:
+- A—B (quantum)
+- B—C (classical)
+- C—D (quantum)
+- A—D (hybrid)
+During hybrid routing:
+
+You set temp_graph = copy of G
+
+Try shortest path A → B → C → D
+
+If B—C fails, you remove B—C from temp_graph only, not from the original G
+
+| Step                      | Purpose                                                               |
+| ------------------------- | --------------------------------------------------------------------- |
+| `temp_graph = G`          | Allows safe link removal during retries                               |
+| `attempts = 0`, `max = 5` | Prevents infinite retries                                             |
+| Find hybrid path          | Combines quantum + classical links                                    |
+| Simulate links            | Validates link type, quantum reliability, and quantum-classical rules |
+| On failure                | Remove bad link and retry another path                                |
+| Success condition         | All links succeed → deliver message                                   |
+| Failure condition         | Max attempts or no path → fail                                        |
